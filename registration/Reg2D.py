@@ -1,5 +1,6 @@
 import SimpleITK as sitk
 from pathlib import Path
+import pickle
 
 
 def register_2D_images(source_image, source_image_res, target_image,
@@ -119,14 +120,16 @@ def transform_2D_image(source_image,
     for idx, tmap in enumerate(transformation_maps):
 
         if idx == 0:
-            tmap = sitk.ReadParameterFile(tmap)
+            if isinstance(tmap, sitk.ParameterMap) is False:
+                tmap = sitk.ReadParameterFile(tmap)
             tmap["InitialTransformParametersFileName"] = (
                 "NoInitialTransform", )
             transformix.SetTransformParameterMap(tmap)
             tmap["ResampleInterpolator"] = (
                 "FinalNearestNeighborInterpolator", )
         else:
-            tmap = sitk.ReadParameterFile(tmap)
+            if isinstance(tmap, sitk.ParameterMap) is False:
+                tmap = sitk.ReadParameterFile(tmap)
             tmap["InitialTransformParametersFileName"] = (
                 "NoInitialTransform", )
             tmap["ResampleInterpolator"] = (
@@ -173,8 +176,90 @@ def transform_2D_image(source_image,
         return image
 
 
+def pickle_transforms(registration_dir,
+                      project_name='NormalBreast',
+                      output_name='elx_tforms.pkl'):
+
+    # for NormalBreast data
+    reg_paths = sorted(Path(registration_dir).glob("*"))
+
+    elx_tform_dict = {}
+    for idx, reg_path in enumerate(reg_paths):
+        round_name = '{}_R{}'.format(project_name, reg_path.stem.split('_')[0])
+        elx_tform_dict[round_name] = {}
+        rig_tform = sorted(reg_path.glob('*.0.txt'))[0]
+        nl_tform = sorted(reg_path.glob('*.1.txt'))[0]
+
+        if len(rig_tform) > 0 and len(nl_tform) > 0:
+            rig = sitk.ReadParameterFile(str(rig_tform))
+            nl = sitk.ReadParameterFile(str(nl_tform))
+            elx_tform_dict[round_name]['rigid'] = {}
+            elx_tform_dict[round_name]['nl'] = {}
+
+            for k, v in rig.items():
+                elx_tform_dict[round_name]['rigid'][k] = v
+            for k, v in nl.items():
+                elx_tform_dict[round_name]['nl'][k] = v
+
+    with open('elx_tforms.pkl', 'ab') as f:
+        pickle.dump(elx_tform_dict, f)
+
+
+def load_elx_pickle_tforms(pkled_file):
+    with open(pkled_file, 'rb') as f:
+        tforms = pickle.load(f)
+    tform_dict = {}
+    for k, v in tforms.items():
+        tform_dict[k] = {}
+        tform_dict[k]['rigid'] = sitk.ParameterMap()
+        tform_dict[k]['nl'] = sitk.ParameterMap()
+
+        for kr, vr in tforms[k]['rigid'].items():
+            tform_dict[k]['rigid'][kr] = vr
+
+        for kl, vl in tforms[k]['nl'].items():
+            tform_dict[k]['nl'][kl] = vl
+    return tform_dict
+
+
+# im_dir = '/home/nhp/Desktop/hackathon/NormalBreast'
+# round_tag = 'R2'
+# tforms = load_elx_pickle_tforms(
+#     '/home/nhp/Desktop/hackathon/repo/registration-challenge/normalbreast.pkl')
+# round_tforms = [
+#     tforms['NormalBreast_RR2']['rigid'], tforms['NormalBreast_RR2']['nl']
+# ]
+# source_res = 0.2645833333
+
+
+def apply_transform_to_round(im_dir,
+                             source_res,
+                             round_tforms,
+                             out_folder,
+                             round_tag='R0'):
+
+    dir_path = Path(im_dir)
+
+    round_ims = sorted(dir_path.glob('{}_*'.format(round_tag)))
+    round_ims = [str(im) for im in round_ims]
+
+    for round_im in round_ims:
+        im = transform_2D_image(
+            str(round_im),
+            source_res,
+            round_tforms,
+            im_output_fp='',
+            write_image=False)
+
+        out_im_path = Path(round_im).stem + '_registered.tiff'
+
+        output = str(Path(out_folder) / out_im_path)
+
+        sitk.WriteImage(im, output, True)
+
+
 #preprocessed
-datapath = Path('/home/nhp/Desktop/hackathon/tissue_masks')
+datapath = Path('/home/nhp/Desktop/hackathon/NormalBreast')
 
 #preprocessed
 outpath = Path('/home/nhp/Desktop/hackathon/masked_reg')
@@ -183,7 +268,7 @@ outpath = Path('/home/nhp/Desktop/hackathon/masked_reg')
 #raw
 ims = sorted(datapath.glob("*_c2_*"))
 
-#preprocessed
+#preprocesseds
 ims = sorted(datapath.glob("*"))
 
 # select the first index image as the target
@@ -191,7 +276,8 @@ target = str(ims[0])
 
 #reg models
 reg_models = [
-    'registration/elx_reg_params/rigid.txt', 'elx_reg_2D/elx_reg_params/nl.txt'
+    'registration/elx_reg_params/rigid_largersteps.txt',
+    'registration/elx_reg_params/nl.txt'
 ]
 
 for idx, image in enumerate(ims):
@@ -199,21 +285,24 @@ for idx, image in enumerate(ims):
     if out_folder.is_dir() is False:
         out_folder.mkdir()
     if idx > 0:
-        tforms.append(
-            register_2D_images(
-                str(image),
-                1,
-                str(target),
-                1,
-                reg_models,
-                str(out_folder),
-            ))
+        register_2D_images(
+            str(image),
+            0.2645833333,
+            str(target),
+            0.2645833333,
+            reg_models,
+            str(out_folder),
+        )
 
         rig_tform = sorted(Path(out_folder).glob('*.0.txt'))
         nl_tform = sorted(Path(out_folder).glob('*.1.txt'))
         tform_list = [str(rig_tform[0]), str(nl_tform[0])]
         im = transform_2D_image(
-            str(image), 1, tform_list, im_output_fp='', write_image=False)
+            str(image),
+            0.2645833333,
+            tform_list,
+            im_output_fp='',
+            write_image=False)
         out_im_path = image.stem + '_registered.tiff'
         str(out_folder / out_im_path)
         sitk.WriteImage(im, str(out_folder / out_im_path), True)
