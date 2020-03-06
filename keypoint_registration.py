@@ -15,7 +15,6 @@ def match_keypoints(moving, target, feature_detector):
     :param moving: image that is to be warped to align with target image
     :param target: image to which the moving image will be aligned
     :param feature_detector: a feature detector from opencv
-    :param transformer: transformer object from skimage. See https://scikit-image.org/docs/dev/api/skimage.transform.html for different transformations
     :return:
     '''
 
@@ -45,7 +44,8 @@ def match_keypoints(moving, target, feature_detector):
 
 def apply_transform(moving, target, moving_pts, target_pts, transformer, output_shape_rc=None):
     '''
-    :param output_shape_rc: shape of warped image (row, col). If None, uses shape of traget imae
+    :param transformer: transformer object from skimage. See https://scikit-image.org/docs/dev/api/skimage.transform.html for different transformations
+    :param output_shape_rc: shape of warped image (row, col). If None, uses shape of traget image
     return
     '''
     if output_shape_rc is None:
