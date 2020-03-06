@@ -10,12 +10,11 @@ from skimage.filters import threshold_otsu, try_all_threshold, rank
 
 import cv2
 
-def match_keypoints(moving, target, feature_detector, transformer):
+def match_keypoints(moving, target, feature_detector):
     '''
     :param moving: image that is to be warped to align with target image
     :param target: image to which the moving image will be aligned
     :param feature_detector: a feature detector from opencv
-    :param transformer: transformer object from skimage. See https://scikit-image.org/docs/dev/api/skimage.transform.html for different transformations
     :return:
     '''
 
@@ -44,9 +43,10 @@ def match_keypoints(moving, target, feature_detector, transformer):
     # moving points, target points
     return filtered_src_points, filtered_dst_points
 
-def apply_transform(moving, target, moving_pts, target_pts, output_shape_rc=None):
+def apply_transform(moving, target, moving_pts, target_pts, transformer, output_shape_rc=None):
     '''
-    :param output_shape_rc: shape of warped image (row, col). If None, uses shape of traget imae
+    :param transformer: transformer object from skimage. See https://scikit-image.org/docs/dev/api/skimage.transform.html for different transformations
+    :param output_shape_rc: shape of warped image (row, col). If None, uses shape of traget image
     return
     '''
     if output_shape_rc is None:
@@ -80,9 +80,9 @@ if __name__ == "__main__":
     fd = cv2.KAZE_create(extended=True)
     transformer = transform.SimilarityTransform()
 
-    moving_pts, target_pts = match_keypoints(moving, target, feature_detector=fd, transformer=transformer)
+    moving_pts, target_pts = match_keypoints(moving, target, feature_detector=fd)
 
-    warped_img, warped_pts = apply_transform(moving, target, moving_pts, target_pts)
+    warped_img, warped_pts = apply_transform(moving, target, moving_pts, target_pts, transformer=transformer)
 
     warped_img = img_as_ubyte(warped_img)
     
