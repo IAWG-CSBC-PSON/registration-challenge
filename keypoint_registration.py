@@ -10,7 +10,7 @@ from skimage.filters import threshold_otsu, try_all_threshold, rank
 
 import cv2
 
-def match_keypoints(moving, target, feature_detector, transformer):
+def match_keypoints(moving, target, feature_detector):
     '''
     :param moving: image that is to be warped to align with target image
     :param target: image to which the moving image will be aligned
@@ -40,11 +40,10 @@ def match_keypoints(moving, target, feature_detector, transformer):
 
     filtered_src_points = np.float32([kp1[i].pt for i in filtered_src_match_idx])
     filtered_dst_points = np.float32([kp2[i].pt for i in filtered_dst_match_idx])
-    
-    # moving points, target points
+
     return filtered_src_points, filtered_dst_points
 
-def apply_transform(moving, target, moving_pts, target_pts, output_shape_rc=None):
+def apply_transform(moving, target, moving_pts, target_pts, transformer, output_shape_rc=None):
     '''
     :param output_shape_rc: shape of warped image (row, col). If None, uses shape of traget imae
     return
@@ -52,14 +51,37 @@ def apply_transform(moving, target, moving_pts, target_pts, output_shape_rc=None
     if output_shape_rc is None:
         output_shape_rc = target.shape[:2]
 
+    moving_coords_rc = np.dstack([moving_pts[:, 1], moving_pts[:, 0]])[0]
+
     if str(transformer.__class__) == "<class 'skimage.transform._geometric.PolynomialTransform'>":
         transformer.estimate(target_pts, moving_pts)
         warped_img = transform.warp(moving, transformer, output_shape=output_shape_rc)
+        # warped_moving_rc = transformer(moving_coords_rc)  # transform.warp(src_coords_rc
         warped_pts = cv2.perspectiveTransform(np.array([moving_pts]), np.linalg.inv(transformer.params))[0]
     else:
         transformer.estimate(moving_pts, target_pts)
         warped_img = transform.warp(moving, transformer.inverse, output_shape=output_shape_rc)
         warped_pts = cv2.perspectiveTransform(np.array([moving_pts]), transformer.params)[0]
+        # warped_moving_rc = transformer.inverse(moving_coords_rc)
+
+    # warped_pts_temp = np.dstack([warped_moving_rc[:, 1],
+    #                         warped_moving_rc[:, 0]])[0]
+
+
+    # fig, ax = plt.subplots(1,3, figsize=(10,10))
+    # ax[0].scatter(target_pts[:,0], target_pts[:,1])
+    # ax[0].scatter(moving_pts[:,0], moving_pts[:,1])
+    #
+    # ax[1].scatter(target_pts[:,0], target_pts[:,1])
+    # ax[1].scatter(warped_pts[:,0], warped_pts[:,1])
+    #
+    # ax[2].scatter(target_pts[:,0], target_pts[:,1])
+    # ax[2].scatter(warped_pts_temp[:,0], warped_pts_temp[:,1])
+    #
+    # plt.show()
+    # plt.savefig("rigid_align.png", format="PNG")
+
+
     return warped_img, warped_pts
 
 def keypoint_distance(moving_pts, target_pts, img_h, img_w):
@@ -70,19 +92,22 @@ import sys
 
 if __name__ == "__main__":
     assert len(sys.argv) == 3, "Provide path to moving, target image"
-    
+    #
     target_file = sys.argv[1]
     moving_file = sys.argv[2]
-    
+
+    # target_file = "../NormalBreast/R1_PCNA.CD8.PD1.CK19_SMT130-4_2019_05_08__12_15__1613S-Scene-012_c1_ORG.tif"
+    # moving_file = "../NormalBreast/R2_CK5.HER2.ER.CD45_SMT130-4_2019_05_09__21_52__1654S-Scene-012_c1_ORG.tif"
+
     target = img_as_ubyte(img_as_float(Image.open(target_file)))
     moving = img_as_ubyte(img_as_float(Image.open(moving_file)))
 
     fd = cv2.KAZE_create(extended=True)
     transformer = transform.SimilarityTransform()
 
-    moving_pts, target_pts = match_keypoints(moving, target, feature_detector=fd, transformer=transformer)
+    moving_pts, target_pts = match_keypoints(moving, target, feature_detector=fd)
 
-    warped_img, warped_pts = apply_transform(moving, target, moving_pts, target_pts)
+    warped_img, warped_pts = apply_transform(moving, target, moving_pts, target_pts, transformer=transformer)
 
     warped_img = img_as_ubyte(warped_img)
     
