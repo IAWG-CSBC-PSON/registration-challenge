@@ -80,6 +80,12 @@ levels <- c("Unaligned\n(DAPI)", "Linear; Keypoint\n(OHSU; DAPI)", "Linear; Keyp
 
 tbl$Strategy <- factor(tbl$Strategy, levels = levels)
 
+tmp <- tbl
+tmp$Strategy <- as.character(tmp$Strategy)
+tmp$Strategy <- gsub(tmp$Strategy, pattern="\n", replacement=" ")
+
+write.table(tmp, file = "distance-results-tbl.tsv", sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
 g <- ggplot(data = tbl, aes(x = Strategy, y = Distance, colour = Dataset))
 g <- g + scale_y_continuous(trans='log2', labels = scientific)
 g <- g + geom_beeswarm(size = 3)
