@@ -1,9 +1,7 @@
 import numpy as np
-from PIL import Image
+import os
 from matplotlib import pyplot as plt
-from skimage import transform, util
-from skimage import data, img_as_float
-from skimage.util import img_as_ubyte
+from skimage import io, transform, util
 import cv2
 
 def match_keypoints(moving, target, feature_detector):
@@ -38,6 +36,7 @@ def match_keypoints(moving, target, feature_detector):
 
     return filtered_src_points, filtered_dst_points
 
+
 def apply_transform(moving, target, moving_pts, target_pts, transformer, output_shape_rc=None):
     '''
     :param transformer: transformer object from skimage. See https://scikit-image.org/docs/dev/api/skimage.transform.html for different transformations
@@ -47,34 +46,58 @@ def apply_transform(moving, target, moving_pts, target_pts, transformer, output_
     if output_shape_rc is None:
         output_shape_rc = target.shape[:2]
 
-    if str(transformer.__class__) == "<class 'skimage.transform._geometric.PolynomialTransform'>":
-        transformer.estimate(target_pts, moving_pts)
-        warped_img = transform.warp(moving, transformer, output_shape=output_shape_rc)
-
-        ### Restimate to warp points
-        transformer.estimate(moving_pts, target_pts)
-        warped_pts = transformer(moving_pts)
-    else:
+    # case of transformer
+    if str(transformer.__class__) == "<class 'skimage.transform._geometric.SimilarityTransform'>":
         transformer.estimate(moving_pts, target_pts)
         warped_img = transform.warp(moving, transformer.inverse, output_shape=output_shape_rc)
         warped_pts = transformer(moving_pts)
 
+    elif str(transformer.__class__) == "<class 'skimage.transform._geometric.PolynomialTransform'>":
+        transformer.estimate(target_pts, moving_pts)
+        warped_img = transform.warp(moving, transformer, output_shape=output_shape_rc)
+        ### Restimate to warp points
+        transformer.estimate(moving_pts, target_pts)
+        warped_pts = transformer(moving_pts)
+
+    else:
+        sys.exit('Error @ apply_transform : handling for this transformer type is not yet implemented {transformer.__class__}.')
+
+    # dtype warped float64 image
+    if not (warped_img.dtype.type is np.float64):
+        sys.exit('Error @ keypointregist.apply_transform : warped_img dtype is not np.float64 {warped_img.dtype.type}.\nthis should not happen. fix source code!')
+    if (target_img.dtype.type is np.uint8):
+        warped_img = util.img_as_ubyte(warped_img)
+    else:
+        warped_img = util.img_as_uint(warped_img)
+
     return warped_img, warped_pts
+
 
 def keypoint_distance(moving_pts, target_pts, img_h, img_w):
     dst = np.sqrt(np.sum((moving_pts - target_pts)**2, axis=1)) / np.sqrt(img_h**2 + img_w**2)
     return np.mean(dst)
 
+
 import sys
 
 if __name__ == "__main__":
-    assert len(sys.argv) == 3, "Provide path to moving, target image"
+    assert len(sys.argv) == 3, "Provide path to moving, target image, 8[bit] or 16[bit]."
 
     target_file = sys.argv[1]
     moving_file = sys.argv[2]
 
-    target = img_as_ubyte(img_as_float(Image.open(target_file)))
-    moving = img_as_ubyte(img_as_float(Image.open(moving_file)))
+    target = io.imread(target_file)
+    moving = io.imread(moving_file)
+
+    clip_min = int(np.percentile(target, 2.5))
+    clip_max = int(np.percentile(target, 97.5))
+    target = np.clip(target, a_min=clip_min, a_max=clip_max)
+    target = exposure.rescale_intensity(target, in_range='image')
+
+    clip_min = int(np.percentile(moving, 2.5))
+    clip_max = int(np.percentile(moving, 97.5))
+    moving = np.clip(moving, a_min=clip_min, a_max=clip_max)
+    moving = exposure.rescale_intensity(moving, in_range='image')
 
     fd = cv2.KAZE_create(extended=True)
     moving_pts, target_pts = match_keypoints(moving, target, feature_detector=fd)
@@ -82,8 +105,6 @@ if __name__ == "__main__":
     transformer = transform.SimilarityTransform()
     warped_img, warped_pts = apply_transform(moving, target, moving_pts, target_pts, transformer=transformer)
 
-    warped_img = img_as_ubyte(warped_img)
-    
     print("Unaligned offset:", keypoint_distance(moving_pts, target_pts, moving.shape[0], moving.shape[1]))
     print("Aligned offset:", keypoint_distance(warped_pts, target_pts, moving.shape[0], moving.shape[1]))
     
