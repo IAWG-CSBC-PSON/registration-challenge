@@ -1,7 +1,7 @@
 import numpy as np
 import os
 from matplotlib import pyplot as plt
-from skimage import io, transform, util
+from skimage import exposure, io, transform, util
 import cv2
 
 def match_keypoints(moving, target, feature_detector):
